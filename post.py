@@ -1,6 +1,5 @@
 import csv
 import easypost
-import logging
 import os
 import requests
 import shutil
@@ -9,7 +8,7 @@ import time
 from slugify import slugify
 
 easypost.api_key = 'hLbx0e4o1Y5khc3t6QMeUw'
-date = time.strftime("%Y/%m/%d")
+date = time.strftime("%Y-%m-%d")
 fromAddress = easypost.Address.create(
   company = 'Tracy Osborn',
   street1 = '1547 Montellano Drive',
@@ -18,15 +17,6 @@ fromAddress = easypost.Address.create(
   zip = '95120',
   phone = '425-998-7229',
 )
-
-# create folder for labels
-directory = date.replace("/", "-")
-if not os.path.exists(directory):
-    os.makedirs(directory)
-
-file = open("%s/newfile.txt", "w") % directory
-file.write("hello world in the new file\n")
-file.close()
 
 
 def import_csv():
@@ -94,6 +84,7 @@ def setup_shipment(row, customs=None):
       customs_info = customs,
       options = {
           'special_rates_eligibility':'USPS.MEDIAMAIL',
+          'date_advance': '4',
       }
     )
 
@@ -107,24 +98,42 @@ def buy_postage(shipment):
     return shipment
 
 
-def export_postage(label_url, name):
+def export_postage(label_url, file_name):
     url = label_url
-    name = slugify(name)
 
     response = requests.get(url, stream=True)
-    with open('%s/img-%s.png' % (directory, name), 'wb') as out_file:
+    with open(file_name, 'wb') as out_file:
         shutil.copyfileobj(response.raw, out_file)
     del response
 
 
-csv_rows = import_csv()
-# TODO: Create log file exporting the tracking numbers and names of the shipments
-# TODO: Investigate tracking and see whether it's included or not
 # XXX: Make sure I can set the shipping date
+
+# import csv
+csv_rows = import_csv()
+
+# create folder for labels
+directory = date
+if not os.path.exists(directory):
+    os.makedirs(directory)
+
+# set up logging file
+file = open(os.path.join(directory, "log.csv"), "a")
+
+# track the total cost
+total_cost = 0
+
 for row in csv_rows:
     domestic = False
     canada = False
     customs = []
+    name = row[0]
+
+    # set file name (so we can check whether it's already been created)
+    file_name = "%s/img-%s.png" % (directory, slugify(name))
+    if os.path.isfile(file_name):
+        print "Label exists!"
+        continue
 
     print "Country: " + row[6]
     if row[6] == "US":
@@ -138,7 +147,7 @@ for row in csv_rows:
     shipment = setup_shipment(row, customs)
     shipment = buy_postage(shipment)
 
-    print shipment
+    #print shipment
     label_url = shipment["postage_label"]["label_url"]
     selected_rate = shipment["selected_rate"]["rate"]
     tracking_code = shipment["tracker"]["tracking_code"]
@@ -148,4 +157,10 @@ for row in csv_rows:
     print "Tracking code: " + tracking_code
 
     print "Exporting image."
-    export_postage(label_url, row[0])
+    export_postage(label_url, file_name)
+
+    file.write(u"%s,%s,$%s\n" % (name.decode('ascii', 'ignore'), tracking_code, selected_rate))
+    total_cost += float(selected_rate)
+
+file.write("$%s" % total_cost)
+file.close()
