@@ -54,6 +54,8 @@ def setup_customs(canada):
     if canada:
         eel_pfc = 'NOEEI 30.36'
 
+    print "Exception: " + eel_pfc
+
     customs_info = easypost.CustomsInfo.create(
         eel_pfc = eel_pfc,
         customs_certify = True,
@@ -116,6 +118,7 @@ def export_postage(label_url, name):
 us_csv_rows, int_csv_rows = import_csv()
 for row in int_csv_rows:
     canada = False
+    print "Country: " + row[6]
     if row[6] == "CA":
         canada = True
 
@@ -123,12 +126,12 @@ for row in int_csv_rows:
     shipment = setup_shipment(row, customs)
     shipment = buy_postage(shipment)
 
-    print shipment
+    #print shipment
     label_url = shipment["postage_label"]["label_url"]
     selected_rate = shipment["selected_rate"]["rate"]
 
     print "Label URL: " + label_url
     print "Selected rate: $" + selected_rate
 
-    print "Exporting image:"
+    print "Exporting image."
     export_postage(label_url, row[0])
