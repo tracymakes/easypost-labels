@@ -2,6 +2,8 @@ import easypost
 import csv
 import requests
 import shutil
+import time
+import os
 
 from slugify import slugify
 
@@ -108,12 +110,20 @@ def buy_postage(shipment):
 def export_postage(label_url, name):
     url = label_url
     name = slugify(name)
+
+    # create folder for labels
+    directory = date
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+
     response = requests.get(url, stream=True)
-    with open('img-%s.png' % name, 'wb') as out_file:
+    with open('%s/img-%s.png' % (directory, name), 'wb') as out_file:
         shutil.copyfileobj(response.raw, out_file)
     del response
 
 
+date = time.strftime("%d/%m/%Y")
+print "Date: " + date
 
 us_csv_rows, int_csv_rows = import_csv()
 for row in int_csv_rows:
