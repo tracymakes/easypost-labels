@@ -1,3 +1,4 @@
+import argparse
 import csv
 import easypost
 import os
@@ -6,17 +7,6 @@ import shutil
 import time
 
 from slugify import slugify
-
-easypost.api_key = 'hLbx0e4o1Y5khc3t6QMeUw'
-date = time.strftime("%Y-%m-%d")
-fromAddress = easypost.Address.create(
-  company = 'Tracy Osborn',
-  street1 = '1547 Montellano Drive',
-  city = 'San Jose',
-  state = 'CA',
-  zip = '95120',
-  phone = '425-998-7229',
-)
 
 
 def import_csv():
@@ -59,10 +49,10 @@ def setup_customs(canada):
     return customs_info
 
 
-def setup_shipment(row, customs=None):
+def setup_shipment(row, from_address, days_advance, customs=None):
     print "Setting up the shipment."
 
-    toAddress = easypost.Address.create(
+    to_address = easypost.Address.create(
       name = row[0],
       street1 = row[1],
       street2 = row[2],
@@ -78,13 +68,13 @@ def setup_shipment(row, customs=None):
     )
 
     shipment = easypost.Shipment.create(
-      to_address = toAddress,
-      from_address = fromAddress,
+      to_address = to_address,
+      from_address = from_address,
       parcel = parcel,
       customs_info = customs,
       options = {
           'special_rates_eligibility':'USPS.MEDIAMAIL',
-          'date_advance': '4',
+          'date_advance': days_advance,
       }
     )
 
@@ -107,60 +97,84 @@ def export_postage(label_url, file_name):
     del response
 
 
-# XXX: Make sure I can set the shipping date
+def main():
+    parser = argparse.ArgumentParser(description='Create shipping labels from EasyPost.com.')
+    parser.add_argument('--days', dest='days', metavar='N', type=int, help='Days from now that you want to ship the label(s). Default is today.', default=0)
 
-# import csv
-csv_rows = import_csv()
+    args = parser.parse_args()
+    days_advance = args.days
 
-# create folder for labels
-directory = date
-if not os.path.exists(directory):
-    os.makedirs(directory)
+    easypost.api_key = os.getenv('EASYPOST_API_KEY')
+    if not easypost.api_key:
+        raise ValueError("Missing EASYPOST_API_KEY env var.")
 
-# set up logging file
-file = open(os.path.join(directory, "log.csv"), "a")
+    date = time.strftime("%Y-%m-%d")
+    from_address = easypost.Address.create(
+      company = 'Tracy Osborn',
+      street1 = '1547 Montellano Drive',
+      city = 'San Jose',
+      state = 'CA',
+      zip = '95120',
+      phone = '425-998-7229',
+    )
 
-# track the total cost
-total_cost = 0
+    # import csv
+    csv_rows = import_csv()
 
-for row in csv_rows:
-    domestic = False
-    canada = False
-    customs = []
-    name = row[0]
+    # create folder for labels
+    directory = date
+    if not os.path.exists(directory):
+        os.makedirs(directory)
 
-    # set file name (so we can check whether it's already been created)
-    file_name = "%s/img-%s.png" % (directory, slugify(name))
-    if os.path.isfile(file_name):
-        print "Label exists!"
-        continue
+    # set up logging file
+    file = open(os.path.join(directory, "log.csv"), "a")
 
-    print "Country: " + row[6]
-    if row[6] == "US":
-        domestic = True
-    elif row[6] == "CA":
-        canada = True
+    # track the total cost
+    total_cost = 0
 
-    if not domestic:
-        customs = setup_customs(canada)
+    for row in csv_rows:
+        domestic = False
+        canada = False
+        customs = []
+        name = row[0]
 
-    shipment = setup_shipment(row, customs)
-    shipment = buy_postage(shipment)
+        # set file name (so we can check whether it's already been created)
+        file_name = "%s/img-%s.png" % (directory, slugify(name))
+        if os.path.isfile(file_name):
+            print "Label exists!"
+            continue
 
-    #print shipment
-    label_url = shipment["postage_label"]["label_url"]
-    selected_rate = shipment["selected_rate"]["rate"]
-    tracking_code = shipment["tracker"]["tracking_code"]
+        print "Country: " + row[6]
+        if row[6] == "US":
+            domestic = True
+        elif row[6] == "CA":
+            canada = True
 
-    print "Label URL: " + label_url
-    print "Selected rate: $" + selected_rate
-    print "Tracking code: " + tracking_code
+        if not domestic:
+            customs = setup_customs(canada)
 
-    print "Exporting image."
-    export_postage(label_url, file_name)
+        shipment = setup_shipment(row, from_address, days_advance, customs)
+        shipment = buy_postage(shipment)
 
-    file.write(u"%s,%s,$%s\n" % (name.decode('ascii', 'ignore'), tracking_code, selected_rate))
-    total_cost += float(selected_rate)
+        #print shipment
+        label_url = shipment["postage_label"]["label_url"]
+        selected_rate = shipment["selected_rate"]["rate"]
+        tracking_code = shipment["tracker"]["tracking_code"]
 
-file.write("$%s" % total_cost)
-file.close()
+        print "Label URL: " + label_url
+        print "Selected rate: $" + selected_rate
+        print "Tracking code: " + tracking_code
+
+        print "Exporting image."
+        export_postage(label_url, file_name)
+
+        file.write(u"%s,%s,$%s\n" % (name.decode('ascii', 'ignore'), tracking_code, selected_rate))
+        total_cost += float(selected_rate)
+
+    file.write("$%s" % total_cost)
+    file.close()
+
+
+
+if __name__ == "__main__":
+    main()
