@@ -6,6 +6,8 @@ staticfiles
 *.zip
 *.csv
 *.png
+*.jpeg
+*.jpg
 .env*
 
 # Byte-compiled / optimized / DLL files
