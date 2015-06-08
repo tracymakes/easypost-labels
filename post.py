@@ -50,7 +50,7 @@ def setup_customs(canada):
 
 
 def setup_shipment(row, from_address, days_advance, customs=None):
-    print "Setting up the shipment."
+    #print "Setting up the shipment."
 
     to_address = easypost.Address.create(
       name = row[0],
@@ -82,7 +82,7 @@ def setup_shipment(row, from_address, days_advance, customs=None):
 
 
 def buy_postage(shipment):
-    print "Buying lowest rate from USPS."
+    #print "Buying lowest rate from USPS."
     shipment.buy(rate=shipment.lowest_rate(carriers=['USPS'],))
 
     return shipment
@@ -132,7 +132,8 @@ def main():
     # track the total cost
     total_cost = 0
 
-    for row in csv_rows:
+    for i, row in enumerate(csv_rows):
+        print i, row
         domestic = False
         canada = False
         customs = []
@@ -144,7 +145,7 @@ def main():
             print "Label exists!"
             continue
 
-        print "Country: " + row[6]
+        #print "Country: " + row[6]
         if row[6] == "US":
             domestic = True
         elif row[6] == "CA":
@@ -161,19 +162,19 @@ def main():
         selected_rate = shipment["selected_rate"]["rate"]
         tracking_code = shipment["tracker"]["tracking_code"]
 
-        print "Label URL: " + label_url
-        print "Selected rate: $" + selected_rate
-        print "Tracking code: " + tracking_code
+        print "Label URL: %s" % label_url
+        print "Selected rate: %s$" % selected_rate
+        print "Tracking code: %s" % tracking_code
 
-        print "Exporting image."
+        #print "Exporting image."
         export_postage(label_url, file_name)
 
         file.write(u"%s,%s,$%s\n" % (name.decode('ascii', 'ignore'), tracking_code, selected_rate))
         total_cost += float(selected_rate)
+        print "Total cost so far: %s$" % total_cost
 
     file.write("$%s" % total_cost)
     file.close()
-
 
 
 if __name__ == "__main__":
