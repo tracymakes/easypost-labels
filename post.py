@@ -8,6 +8,10 @@ import time
 
 from slugify import slugify
 
+"""
+Program to take a CSV of book orders and use the EasyPost API to buy and create
+labels for each order.
+"""
 
 def import_csv():
     csv_rows = []
