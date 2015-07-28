@@ -1,3 +1,4 @@
+import settings
 import argparse
 import csv
 import easypost
@@ -11,6 +12,9 @@ from slugify import slugify
 """
 Program to take a CSV of book orders and use the EasyPost API to buy and create
 labels for each order.
+
+NOTE: There are custom values here for Hello Web App that should be overridden
+if you're using this for your own items.
 """
 
 def import_csv():
@@ -29,14 +33,7 @@ def import_csv():
 
 
 def setup_customs(canada):
-    customs_item1 = easypost.CustomsItem.create(
-        description = 'Hello Web App book',
-        quantity = 1,
-        value = 20,
-        weight = 10,
-        hs_tariff_number = 490199,
-        origin_country = 'US'
-    )
+    customs_item1 = easypost.CustomsItem.create(**settings.ITEM_DESCRIPTION)
 
     eel_pfc = 'NOEEI 30.37(a)'
     if canada:
@@ -102,6 +99,8 @@ def export_postage(label_url, file_name):
 
 
 def main():
+    # Will default to creating labels for today that will need to be shipped
+    # within 24 hours. Add the days argument to change the date.t 
     parser = argparse.ArgumentParser(description='Create shipping labels from EasyPost.com.')
     parser.add_argument('--days', dest='days', metavar='N', type=int, help='Days from now that you want to ship the label(s). Default is today.', default=0)
 
@@ -113,20 +112,13 @@ def main():
         raise ValueError("Missing EASYPOST_API_KEY env var.")
 
     date = time.strftime("%Y-%m-%d")
-    from_address = easypost.Address.create(
-      company = 'Tracy Osborn',
-      street1 = '1547 Montellano Drive',
-      city = 'San Jose',
-      state = 'CA',
-      zip = '95120',
-      phone = '425-998-7229',
-    )
+    from_address = easypost.Address.create(**settings.FROM_ADDRESS)
 
     # import csv
     csv_rows = import_csv()
 
     # create folder for labels
-    directory = date
+    directory = "labels/%s" % date
     if not os.path.exists(directory):
         os.makedirs(directory)
 
@@ -173,7 +165,7 @@ def main():
         #print "Exporting image."
         export_postage(label_url, file_name)
 
-        file.write(u"%s,%s,$%s\n" % (name.decode('ascii', 'ignore'), tracking_code, selected_rate))
+        file.write(u"%s,%s,$%s,%s\n" % (name.decode('ascii', 'ignore'), tracking_code, label_url, selected_rate))
         total_cost += float(selected_rate)
         print "Total cost so far: %s$" % total_cost
 
