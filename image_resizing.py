@@ -11,6 +11,9 @@ from PIL import Image
     - Determine whether the image needs to be rotated correctly
         - Rotate if needed
     - Add to paper (even: top, odd: bottom)
+
+This script is meant to be moved into the created folder - probably should be
+rewritten to always search the latest created folder.
 """
 
 
@@ -33,7 +36,7 @@ for item in items:
     # if iteration is even, put the image at the top of the blank file
     #print counter
     if counter % 2 == 0:
-        empty = Image.open("../blank.jpg")
+        empty = Image.open("../../blank.jpg")
         empty.paste(im, (300,200))
     else:
         empty.paste(im, (300,1900))
