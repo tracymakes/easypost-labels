@@ -32,8 +32,13 @@ def import_csv():
     return csv_rows
 
 
-def setup_customs(canada):
-    customs_item1 = easypost.CustomsItem.create(**settings.ITEM_DESCRIPTION)
+def setup_customs(canada, type):
+    if type == "1":
+        customs_item1 = easypost.CustomsItem.create(**settings.HWA1_DESCRIPTION)
+    elif type == "2":
+        customs_item1 = easypost.CustomsItem.create(**settings.HWA2_DESCRIPTION)
+    elif type == "12":
+        customs_item1 = easypost.CustomsItem.create(**settings.DOUBLE_ITEM_DESCRIPTION)
 
     eel_pfc = 'NOEEI 30.37(a)'
     if canada:
@@ -50,7 +55,7 @@ def setup_customs(canada):
     return customs_info
 
 
-def setup_shipment(row, from_address, days_advance, customs=None):
+def setup_shipment(row, from_address, days_advance, type, customs=None):
     #print "Setting up the shipment."
 
     to_address = easypost.Address.create(
@@ -63,9 +68,19 @@ def setup_shipment(row, from_address, days_advance, customs=None):
       country = row[6],
     )
 
+    if not row[7]:
+        raise ValueError("Missing package type.")
+
+    if type == "1":
+        weight = "10"
+    elif type == "2":
+        weight = "13"
+    elif type == "12":
+        weight = "21"
+
     parcel = easypost.Parcel.create(
       predefined_package = 'Parcel',
-      weight = 10,
+      weight = weight,
     )
 
     shipment = easypost.Shipment.create(
@@ -82,10 +97,22 @@ def setup_shipment(row, from_address, days_advance, customs=None):
     return shipment
 
 
-def buy_postage(shipment):
-    #print "Buying lowest rate from USPS."
-    shipment.buy(rate=shipment.lowest_rate(carriers=['USPS'],))
+def buy_postage(shipment, speed="normal"):
+    """
+    Can choose from several different shipping rates:
+    - normal (Media Mail for US, first for International)
+    - premium (Priority for US, not offered for International)
+    - urgent (Overnight for US, not offered for International)
+    """
 
+    if speed == "premium":
+        shipment.buy(rate=shipment.lowest_rate(carriers=['USPS'], services=['Priority']))
+    elif speed == "urgent":
+        shipment.buy(rate=shipment.lowest_rate(carriers=['USPS'], services=['Express']))
+    else:
+        shipment.buy(rate=shipment.lowest_rate(carriers=['USPS'],))
+
+    #print "Speed: %s" % shipment.rate
     return shipment
 
 
@@ -141,33 +168,41 @@ def main():
             print "Label exists!"
             continue
 
-        #print "Country: " + row[6]
+        # set variables for speed, location, and which books
+        type = row[7]
+        speed = row[8]
         if row[6] == "US":
             domestic = True
         elif row[6] == "CA":
             canada = True
 
+        # set up customs for international
         if not domestic:
-            customs = setup_customs(canada)
+            customs = setup_customs(canada, type)
 
-        shipment = setup_shipment(row, from_address, days_advance, customs)
-        shipment = buy_postage(shipment)
+        # set up the shipment
+        shipment = setup_shipment(row, from_address, days_advance, type, customs)
 
-        #print shipment
+        # buy the postage
+        shipment = buy_postage(shipment, speed)
+
+        # print label
         label_url = shipment["postage_label"]["label_url"]
+        selected_service = shipment["selected_rate"]["service"]
         selected_rate = shipment["selected_rate"]["rate"]
         tracking_code = shipment["tracker"]["tracking_code"]
 
         print "Label URL: %s" % label_url
-        print "Selected rate: %s$" % selected_rate
+        print "Selected rate: USPS %s $%s" % (selected_service, selected_rate)
         print "Tracking code: %s" % tracking_code
 
         #print "Exporting image."
         export_postage(label_url, file_name)
 
-        file.write(u"%s,%s,$%s,%s\n" % (name.decode('ascii', 'ignore'), tracking_code, label_url, selected_rate))
+        file.write(u"%s,%s,$%s,%s,%s\n" % (name.decode('ascii', 'ignore'), tracking_code, label_url, selected_service, selected_rate))
         total_cost += float(selected_rate)
-        print "Total cost so far: %s$" % total_cost
+        print "Total cost so far: $%s" % total_cost
+        print "------"
 
     file.write("$%s" % total_cost)
     file.close()
