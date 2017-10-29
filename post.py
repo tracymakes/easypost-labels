@@ -98,7 +98,7 @@ def setup_shipment(row, from_address, days_advance, type, customs=None):
     return shipment
 
 
-def buy_postage(shipment, speed="normal"):
+def buy_postage(shipment, speed="normal", skip_buy=False):
     """
     Can choose from several different shipping rates:
     - normal (Media Mail for US, first for International)
@@ -117,6 +117,11 @@ def buy_postage(shipment, speed="normal"):
             rate = shipment.lowest_rate(carriers=['USPS'],)
     else:
         rate = shipment.lowest_rate()
+
+    if skip_buy:
+        shipment["selected_rate"] = rate
+        print "Skipping buy"
+        return shipment
 
     shipment.buy(rate=rate)
     #print "Speed: %s" % shipment.rate
@@ -138,6 +143,7 @@ def main():
     parser = argparse.ArgumentParser(description='Create shipping labels from EasyPost.com.')
     parser.add_argument('--days', dest='days', metavar='N', type=int, help='Days from now that you want to ship the label(s). Default is today.', default=0)
     parser.add_argument('--domestic', dest='domestic', metavar='COUNTRY', type=str, help='2-letter country code of origin that is considered domestic. Default: US', default='US')
+    parser.add_argument('--skip-buy', dest='skip_buy', action='store_const', const=True, help='Skip buying labels, only estimate rates', default=False)
     parser.add_argument('orders', metavar='CSV')
 
     args = parser.parse_args()
@@ -187,23 +193,26 @@ def main():
         shipment = setup_shipment(row, from_address, days_advance, type, customs)
 
         # buy the postage
-        shipment = buy_postage(shipment, speed)
+        shipment = buy_postage(shipment, speed, skip_buy=args.skip_buy)
 
         # print label
-        label_url = shipment["postage_label"]["label_url"]
         selected_carrier = shipment["selected_rate"]["carrier"]
         selected_service = shipment["selected_rate"]["service"]
         selected_rate = shipment["selected_rate"]["rate"]
-        tracking_code = shipment["tracker"]["tracking_code"]
 
-        print "Label URL: %s" % label_url
         print "Selected rate: %s %s $%s" % (selected_carrier, selected_service, selected_rate)
-        print "Tracking code: %s" % tracking_code
 
-        #print "Exporting image."
-        export_postage(label_url, file_name)
+        if not args.skip_buy:
+            tracking_code = shipment["tracker"]["tracking_code"]
+            print "Tracking code: %s" % tracking_code
 
-        file.write(u"%s,%s,$%s,%s,%s\n" % (name.decode('ascii', 'ignore'), tracking_code, label_url, selected_service, selected_rate))
+            #print "Exporting image."
+            label_url = shipment["postage_label"]["label_url"]
+            print "Label URL: %s" % label_url
+            export_postage(label_url, file_name)
+
+            file.write(u"%s,%s,$%s,%s,%s\n" % (name.decode('ascii', 'ignore'), tracking_code, label_url, selected_service, selected_rate))
+
         total_cost += float(selected_rate)
         print "Total cost so far: $%s" % total_cost
         print "------"
