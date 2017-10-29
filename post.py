@@ -106,14 +106,17 @@ def buy_postage(shipment, speed="normal"):
     - urgent (Overnight for US, not offered for International)
     """
 
-    rate = shipment.lowest_rate()
-    if shipment['from_address'].get('country', 'US') == 'US':
+    country = shipment['from_address'].get('country', 'US')
+    rate = None
+    if country == 'US':
         if speed == "premium":
             rate = shipment.lowest_rate(carriers=['USPS'], services=['Priority'])
         elif speed == "urgent":
             rate = shipment.lowest_rate(carriers=['USPS'], services=['Express'])
         else:
             rate = shipment.lowest_rate(carriers=['USPS'],)
+    else:
+        rate = shipment.lowest_rate()
 
     shipment.buy(rate=rate)
     #print "Speed: %s" % shipment.rate
@@ -188,12 +191,13 @@ def main():
 
         # print label
         label_url = shipment["postage_label"]["label_url"]
+        selected_carrier = shipment["selected_rate"]["carrier"]
         selected_service = shipment["selected_rate"]["service"]
         selected_rate = shipment["selected_rate"]["rate"]
         tracking_code = shipment["tracker"]["tracking_code"]
 
         print "Label URL: %s" % label_url
-        print "Selected rate: USPS %s $%s" % (selected_service, selected_rate)
+        print "Selected rate: %s %s $%s" % (selected_carrier, selected_service, selected_rate)
         print "Tracking code: %s" % tracking_code
 
         #print "Exporting image."
