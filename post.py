@@ -106,13 +106,16 @@ def buy_postage(shipment, speed="normal"):
     - urgent (Overnight for US, not offered for International)
     """
 
-    if speed == "premium":
-        shipment.buy(rate=shipment.lowest_rate(carriers=['USPS'], services=['Priority']))
-    elif speed == "urgent":
-        shipment.buy(rate=shipment.lowest_rate(carriers=['USPS'], services=['Express']))
-    else:
-        shipment.buy(rate=shipment.lowest_rate(carriers=['USPS'],))
+    rate = shipment.lowest_rate()
+    if shipment['from_address'].get('country', 'US') == 'US':
+        if speed == "premium":
+            rate = shipment.lowest_rate(carriers=['USPS'], services=['Priority'])
+        elif speed == "urgent":
+            rate = shipment.lowest_rate(carriers=['USPS'], services=['Express'])
+        else:
+            rate = shipment.lowest_rate(carriers=['USPS'],)
 
+    shipment.buy(rate=rate)
     #print "Speed: %s" % shipment.rate
     return shipment
 
@@ -160,7 +163,6 @@ def main():
 
     for i, row in enumerate(csv_rows):
         print i, row
-        domestic = False
         customs = []
         name = row[0]
 
@@ -174,12 +176,9 @@ def main():
         type = row[7]
         speed = row[8]
         country = row[6]
-        if country == args.domestic:
-            domestic = True
 
         # set up customs for international
-        if not domestic:
-            customs = setup_customs(country, type)
+        customs = setup_customs(country, type)
 
         # set up the shipment
         shipment = setup_shipment(row, from_address, days_advance, type, customs)
