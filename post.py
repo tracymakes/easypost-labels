@@ -17,6 +17,7 @@ NOTE: There are custom values here for Hello Web App that should be overridden
 if you're using this for your own items.
 """
 
+
 def import_csv(path='orders.csv'):
     csv_rows = []
 
@@ -37,62 +38,83 @@ def setup_customs(country, type):
         customs_item1 = easypost.CustomsItem.create(**settings.HWA1_DESCRIPTION)
     elif type == "2":
         customs_item1 = easypost.CustomsItem.create(**settings.HWA2_DESCRIPTION)
+    elif type == "3":
+        customs_item1 = easypost.CustomsItem.create(**settings.HWD_DESCRIPTION)
     elif type == "12":
         customs_item1 = easypost.CustomsItem.create(**settings.DOUBLE_ITEM_DESCRIPTION)
+    elif type == "13":
+        customs_item1 = easypost.CustomsItem.create(**settings.HWA1_HWD_ITEM_DESCRIPTION)
+    elif type == "123":
+        customs_item1 = easypost.CustomsItem.create(**settings.TRIPLE_ITEM_DESCRIPTION)
 
     eel_pfc = 'NOEEI 30.37(a)'
+    """ Don't think this is needed? Can't see in the docs anywhere.
     if country == 'CA':
         # Canada
         eel_pfc = 'NOEEI 30.36'
+    """
 
     customs_info = easypost.CustomsInfo.create(
-        eel_pfc = eel_pfc,
-        customs_certify = True,
-        customs_signer = 'Tracy Osborn',
-        contents_type = 'merchandise',
-        customs_items = [customs_item1,]
+        eel_pfc=eel_pfc,
+        customs_certify=True,
+        customs_signer='Tracy Osborn',
+        contents_type='merchandise',
+        customs_items=[customs_item1, ]
     )
 
     return customs_info
 
 
 def setup_shipment(row, from_address, days_advance, type, customs=None):
-    #print "Setting up the shipment."
+    # print "Setting up the shipment."
+
+    phone = row[7]
+    country = row[6]
+    if not phone and country != 'CA':
+        phone = "+14259987229"
 
     to_address = easypost.Address.create(
-      name = row[0],
-      street1 = row[1],
-      street2 = row[2],
-      city = row[3],
-      state = row[4],
-      zip = row[5],
-      country = row[6],
+        name=row[0],
+        street1=row[1],
+        street2=row[2],
+        city=row[3],
+        state=row[4],
+        zip=row[5],
+        country=country,
+        phone=phone,
     )
 
-    if not row[7]:
+    if not row[8]:
         raise ValueError("Missing package type.")
 
-    if type == "1":
+    # XXX Update this for HWD
+    if type == "1": # hwa1
         weight = "10"
-    elif type == "2":
+    elif type == "2": # hwa2
         weight = "13"
-    elif type == "12":
+    elif type == "3": # hwd
+        weight = "12"
+    elif type == "12": # hwa both
         weight = "21"
+    elif type == "13": # hwa + hwd
+        weight = "22"
+    elif type == "123": # all three
+        weight = "33"
 
     parcel = easypost.Parcel.create(
-      predefined_package = 'Parcel',
-      weight = weight,
+        predefined_package='Parcel',
+        weight=weight,
     )
 
     shipment = easypost.Shipment.create(
-      to_address = to_address,
-      from_address = from_address,
-      parcel = parcel,
-      customs_info = customs,
-      options = {
-          'special_rates_eligibility':'USPS.MEDIAMAIL',
-          'date_advance': days_advance,
-      }
+        to_address=to_address,
+        from_address=from_address,
+        parcel=parcel,
+        customs_info=customs,
+        options={
+            'special_rates_eligibility': 'USPS.MEDIAMAIL',
+            'date_advance': days_advance,
+        }
     )
 
     return shipment
@@ -107,6 +129,7 @@ def buy_postage(shipment, speed="normal", skip_buy=False):
     """
 
     country = shipment['from_address'].get('country', 'US')
+    print country
     rate = None
     if country == 'US':
         if speed == "premium":
@@ -124,7 +147,7 @@ def buy_postage(shipment, speed="normal", skip_buy=False):
         return shipment
 
     shipment.buy(rate=rate)
-    #print "Speed: %s" % shipment.rate
+    # print "Speed: %s" % shipment.rate
     return shipment
 
 
@@ -139,7 +162,7 @@ def export_postage(label_url, file_name):
 
 def main():
     # Will default to creating labels for today that will need to be shipped
-    # within 24 hours. Add the days argument to change the date.t 
+    # within 24 hours. Add the days argument to change the date.
     parser = argparse.ArgumentParser(description='Create shipping labels from EasyPost.com.')
     parser.add_argument('--days', dest='days', metavar='N', type=int, help='Days from now that you want to ship the label(s). Default is today.', default=0)
     parser.add_argument('--domestic', dest='domestic', metavar='COUNTRY', type=str, help='2-letter country code of origin that is considered domestic. Default: US', default='US')
@@ -182,8 +205,8 @@ def main():
             continue
 
         # set variables for speed, location, and which books
-        type = row[7]
-        speed = row[8]
+        type = row[8]
+        speed = row[9]
         country = row[6]
 
         # set up customs for international
@@ -206,7 +229,7 @@ def main():
             tracking_code = shipment["tracker"]["tracking_code"]
             print "Tracking code: %s" % tracking_code
 
-            #print "Exporting image."
+            # print "Exporting image."
             label_url = shipment["postage_label"]["label_url"]
             print "Label URL: %s" % label_url
             export_postage(label_url, file_name)
