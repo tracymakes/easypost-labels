@@ -17,12 +17,12 @@ NOTE: There are custom values here for Hello Web App that should be overridden
 if you're using this for your own items.
 """
 
-def import_csv():
+def import_csv(path='orders.csv'):
     csv_rows = []
 
     # import csv
     print "Importing CSV."
-    with open('orders.csv', 'rb') as f:
+    with open(path, 'rb') as f:
         reader = csv.reader(f)
         for row in reader:
             csv_rows.append(row)
@@ -32,7 +32,7 @@ def import_csv():
     return csv_rows
 
 
-def setup_customs(canada, type):
+def setup_customs(country, type):
     if type == "1":
         customs_item1 = easypost.CustomsItem.create(**settings.HWA1_DESCRIPTION)
     elif type == "2":
@@ -41,7 +41,8 @@ def setup_customs(canada, type):
         customs_item1 = easypost.CustomsItem.create(**settings.DOUBLE_ITEM_DESCRIPTION)
 
     eel_pfc = 'NOEEI 30.37(a)'
-    if canada:
+    if country == 'CA':
+        # Canada
         eel_pfc = 'NOEEI 30.36'
 
     customs_info = easypost.CustomsInfo.create(
@@ -97,7 +98,7 @@ def setup_shipment(row, from_address, days_advance, type, customs=None):
     return shipment
 
 
-def buy_postage(shipment, speed="normal"):
+def buy_postage(shipment, speed="normal", skip_buy=False):
     """
     Can choose from several different shipping rates:
     - normal (Media Mail for US, first for International)
@@ -105,13 +106,24 @@ def buy_postage(shipment, speed="normal"):
     - urgent (Overnight for US, not offered for International)
     """
 
-    if speed == "premium":
-        shipment.buy(rate=shipment.lowest_rate(carriers=['USPS'], services=['Priority']))
-    elif speed == "urgent":
-        shipment.buy(rate=shipment.lowest_rate(carriers=['USPS'], services=['Express']))
+    country = shipment['from_address'].get('country', 'US')
+    rate = None
+    if country == 'US':
+        if speed == "premium":
+            rate = shipment.lowest_rate(carriers=['USPS'], services=['Priority'])
+        elif speed == "urgent":
+            rate = shipment.lowest_rate(carriers=['USPS'], services=['Express'])
+        else:
+            rate = shipment.lowest_rate(carriers=['USPS'],)
     else:
-        shipment.buy(rate=shipment.lowest_rate(carriers=['USPS'],))
+        rate = shipment.lowest_rate()
 
+    if skip_buy:
+        shipment["selected_rate"] = rate
+        print "Skipping buy"
+        return shipment
+
+    shipment.buy(rate=rate)
     #print "Speed: %s" % shipment.rate
     return shipment
 
@@ -130,6 +142,9 @@ def main():
     # within 24 hours. Add the days argument to change the date.t 
     parser = argparse.ArgumentParser(description='Create shipping labels from EasyPost.com.')
     parser.add_argument('--days', dest='days', metavar='N', type=int, help='Days from now that you want to ship the label(s). Default is today.', default=0)
+    parser.add_argument('--domestic', dest='domestic', metavar='COUNTRY', type=str, help='2-letter country code of origin that is considered domestic. Default: US', default='US')
+    parser.add_argument('--skip-buy', dest='skip_buy', action='store_const', const=True, help='Skip buying labels, only estimate rates', default=False)
+    parser.add_argument('orders', metavar='CSV')
 
     args = parser.parse_args()
     days_advance = args.days
@@ -142,7 +157,7 @@ def main():
     from_address = easypost.Address.create(**settings.FROM_ADDRESS)
 
     # import csv
-    csv_rows = import_csv()
+    csv_rows = import_csv(args.orders)
 
     # create folder for labels
     directory = "labels/%s" % date
@@ -157,8 +172,6 @@ def main():
 
     for i, row in enumerate(csv_rows):
         print i, row
-        domestic = False
-        canada = False
         customs = []
         name = row[0]
 
@@ -171,35 +184,35 @@ def main():
         # set variables for speed, location, and which books
         type = row[7]
         speed = row[8]
-        if row[6] == "US":
-            domestic = True
-        elif row[6] == "CA":
-            canada = True
+        country = row[6]
 
         # set up customs for international
-        if not domestic:
-            customs = setup_customs(canada, type)
+        customs = setup_customs(country, type)
 
         # set up the shipment
         shipment = setup_shipment(row, from_address, days_advance, type, customs)
 
         # buy the postage
-        shipment = buy_postage(shipment, speed)
+        shipment = buy_postage(shipment, speed, skip_buy=args.skip_buy)
 
         # print label
-        label_url = shipment["postage_label"]["label_url"]
+        selected_carrier = shipment["selected_rate"]["carrier"]
         selected_service = shipment["selected_rate"]["service"]
         selected_rate = shipment["selected_rate"]["rate"]
-        tracking_code = shipment["tracker"]["tracking_code"]
 
-        print "Label URL: %s" % label_url
-        print "Selected rate: USPS %s $%s" % (selected_service, selected_rate)
-        print "Tracking code: %s" % tracking_code
+        print "Selected rate: %s %s $%s" % (selected_carrier, selected_service, selected_rate)
 
-        #print "Exporting image."
-        export_postage(label_url, file_name)
+        if not args.skip_buy:
+            tracking_code = shipment["tracker"]["tracking_code"]
+            print "Tracking code: %s" % tracking_code
 
-        file.write(u"%s,%s,$%s,%s,%s\n" % (name.decode('ascii', 'ignore'), tracking_code, label_url, selected_service, selected_rate))
+            #print "Exporting image."
+            label_url = shipment["postage_label"]["label_url"]
+            print "Label URL: %s" % label_url
+            export_postage(label_url, file_name)
+
+            file.write(u"%s,%s,$%s,%s,%s\n" % (name.decode('ascii', 'ignore'), tracking_code, label_url, selected_service, selected_rate))
+
         total_cost += float(selected_rate)
         print "Total cost so far: $%s" % total_cost
         print "------"

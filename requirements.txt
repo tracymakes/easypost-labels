@@ -1,4 +1,4 @@
-easypost==3.1.1
-python-slugify==1.1.2
-requests==2.7.0
-Pillow==2.8.2
+easypost==3.6.2
+Pillow==4.3.0
+python-slugify==1.2.4
+six==1.11.0
