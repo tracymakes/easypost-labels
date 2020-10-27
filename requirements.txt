@@ -1,6 +1,6 @@
 Unidecode==0.04.17
 cffi==1.1.0
-cryptography==0.9
+cryptography==3.2
 easypost==2.0.14
 enum34==1.0.4
 idna==2.0
